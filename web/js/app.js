@@ -322,18 +322,18 @@
   /* ------------------------------------------------------------ meteo */
   async function loadWeather(force) {
     const st = $('#meteo-status');
-    st.textContent = 'Actualizando lluvia…';
+    st.textContent = 'Actualizando meteo…';
     st.classList.remove('warn');
     const r = await W.get(R, { force, maxAgeH: 3 });
     if (r.data) {
       state.meteo = r.data;
       state.wx = W.interpolate(r.data, R, cells);
       const old = (Date.now() - new Date(r.data.fetched)) > 36 * 3600e3;
-      st.textContent = `Lluvia ${W.ageText(r.data.fetched)}${r.error ? ' · sin conexión' : ''}`;
+      st.textContent = `Meteo: ${W.ageText(r.data.fetched)}${r.error ? ', sin red' : ''}`;
       st.classList.toggle('warn', old || !!r.error);
     } else {
       state.wx = null;
-      st.textContent = 'Sin datos de lluvia';
+      st.textContent = 'Sin meteo: toca para reintentar';
       st.classList.add('warn');
       toast('Sin conexión: el mapa solo usa bosque y temporada hasta que descargue la lluvia.', 5000);
     }
@@ -460,7 +460,7 @@
       why.push(['frost', s.m.fmin < 0 ? `Mínima de ${fmtNum(s.m.fmin)} °C: ha helado` : `Sin heladas (mínima ${fmtNum(s.m.fmin)} °C)`, '', s.m.F]);
       if (s.m.D < 1) why.push(['sun', 'Días secos y calurosos: el suelo se está secando', '', s.m.D]);
     } else {
-      why.push(['rain', 'Sin datos de lluvia', 'conecta a Internet y toca «Lluvia» arriba para descargarlos', 0.5]);
+      why.push(['rain', 'Sin datos de lluvia', 'conecta a Internet y toca «Meteo» arriba para descargarlos', 0.5]);
     }
     why.push(['tree', forest ? `Bosque: ${forest}` : 'Muy poco bosque', `busca ${sp.hostLabel}`, s.h.hc]);
     why.push(['mountain', `Altitud media ${fmtNum(cell.alt)} m`, `rango habitual ${fmtNum(sp.alt[0])}–${fmtNum(sp.alt[1])} m`, s.h.af]);
