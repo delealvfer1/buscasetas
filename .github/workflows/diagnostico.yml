@@ -1,0 +1,21 @@
+name: Diagnóstico meteo
+on:
+  workflow_dispatch:
+jobs:
+  meteo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probar la petición de la app a Open-Meteo
+        run: |
+          URL="$(python3 - <<'PY'
+          R=dict(min_lat=41.66,max_lat=42.12,min_lon=-3.36,max_lon=-2.52)
+          pts=[(R['min_lat']+(R['max_lat']-R['min_lat'])*i/5, R['min_lon']+(R['max_lon']-R['min_lon'])*j/7) for i in range(6) for j in range(8)]
+          lat=','.join(f"{p[0]:.3f}" for p in pts); lon=','.join(f"{p[1]:.3f}" for p in pts)
+          print(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&past_days=30&forecast_days=8&timezone=Europe%2FMadrid")
+          PY
+          )"
+          echo "Longitud URL: ${#URL}"
+          curl -sS -D headers.txt -o body.json -w "HTTP %{http_code} en %{time_total}s, %{size_download} bytes\n" -H "Origin: https://appassets.androidplatform.net" "$URL"
+          grep -i -E "access-control|content-type|x-ratelimit|retry" headers.txt || true
+          head -c 600 body.json; echo
+          python3 -c "import json; d=json.load(open('body.json')); print(type(d).__name__, len(d) if isinstance(d,list) else d.get('reason'))"
