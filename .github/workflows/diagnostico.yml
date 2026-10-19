@@ -5,17 +5,27 @@ jobs:
   meteo:
     runs-on: ubuntu-latest
     steps:
-      - name: Probar la petición de la app a Open-Meteo
+      - name: Probar peticiones a Open-Meteo
         run: |
-          URL="$(python3 - <<'PY'
+          python3 - <<'PY'
+          import json, urllib.request, urllib.error, time
           R=dict(min_lat=41.66,max_lat=42.12,min_lon=-3.36,max_lon=-2.52)
           pts=[(R['min_lat']+(R['max_lat']-R['min_lat'])*i/5, R['min_lon']+(R['max_lon']-R['min_lon'])*j/7) for i in range(6) for j in range(8)]
-          lat=','.join(f"{p[0]:.3f}" for p in pts); lon=','.join(f"{p[1]:.3f}" for p in pts)
-          print(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&past_days=30&forecast_days=8&timezone=Europe%2FMadrid")
+          def url(p, tz):
+              lat=','.join(f"{a:.3f}" for a,b in p); lon=','.join(f"{b:.3f}" for a,b in p)
+              return f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min&past_days=30&forecast_days=8&timezone={tz}"
+          tests={'A_antigua_48_Madrid':url(pts,'Europe%2FMadrid'),'B_nueva_8_auto':url(pts[:8],'auto'),'C_48_auto':url(pts,'auto'),'D_1_Madrid':url(pts[:1],'Europe%2FMadrid')}
+          for name,u in tests.items():
+              t=time.time()
+              try:
+                  req=urllib.request.Request(u, headers={'Origin':'https://appassets.androidplatform.net'})
+                  r=urllib.request.urlopen(req, timeout=60); body=r.read(); code=r.status; acao=r.headers.get('access-control-allow-origin')
+              except urllib.error.HTTPError as e:
+                  body=e.read(); code=e.code; acao=e.headers.get('access-control-allow-origin')
+              except Exception as e:
+                  body=repr(e).encode(); code='EXC'; acao=None
+              try:
+                  js=json.loads(body); info=f"lista de {len(js)}" if isinstance(js,list) else (js.get('reason') or 'objeto con '+','.join(list(js)[:5]))
+              except Exception: info=body[:150]
+              print(f"::notice title={name}::HTTP {code} en {time.time()-t:.1f}s, CORS={acao}, {info}")
           PY
-          )"
-          echo "Longitud URL: ${#URL}"
-          curl -sS -D headers.txt -o body.json -w "HTTP %{http_code} en %{time_total}s, %{size_download} bytes\n" -H "Origin: https://appassets.androidplatform.net" "$URL"
-          grep -i -E "access-control|content-type|x-ratelimit|retry" headers.txt || true
-          head -c 600 body.json; echo
-          python3 -c "import json; d=json.load(open('body.json')); print(type(d).__name__, len(d) if isinstance(d,list) else d.get('reason'))"
