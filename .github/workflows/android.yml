@@ -15,12 +15,12 @@ permissions:
 
 concurrency:
   group: compilar-apk
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -28,9 +28,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Caché de los datos de hábitat
+      - name: Recuperar datos de hábitat guardados
         id: cache-datos
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: pipeline/out
           key: datos-${{ hashFiles('pipeline/build_data.py') }}-${{ inputs.regenerar_datos && github.run_id || 'v1' }}
@@ -40,6 +40,13 @@ jobs:
         run: |
           pip install -r pipeline/requirements.txt
           python pipeline/build_data.py --out pipeline/out
+
+      - name: Guardar datos de hábitat
+        if: steps.cache-datos.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: pipeline/out
+          key: ${{ steps.cache-datos.outputs.cache-primary-key }}
 
       - name: Copiar datos a la app
         run: |
