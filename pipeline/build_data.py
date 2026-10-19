@@ -160,6 +160,8 @@ def forest_type(tags):
 def protected_kind(tags):
     txt = " ".join((tags.get(k) or "") for k in
                    ("protection_title", "designation", "name", "protected_area")).lower()
+    if "biosfera" in txt or "biosphere" in txt:
+        return "otro"
     pc = (tags.get("protect_class") or "").strip()
     if any(w in txt for w in ("parque natural", "reserva natural", "monumento natural", "parque nacional",
                               "paisaje protegido", "espacio natural", "parque regional")):
@@ -244,12 +246,15 @@ def fetch_elevations(points):
                     out.extend(r.json()["elevation"])
                     break
                 log(f"  elevación HTTP {r.status_code}: {r.text[:120]}")
+                if r.status_code == 429:
+                    time.sleep(65)
+                    continue
             except Exception as e:  # noqa: BLE001
                 log("  elevación error", repr(e)[:120])
             time.sleep(5 * (attempt + 1))
         else:
             raise RuntimeError("No se pudo obtener la elevación")
-        time.sleep(0.3)
+        time.sleep(1.5)
     return out
 
 
@@ -329,7 +334,7 @@ def forest_from_osm(rows, cols, d_lat, d_lon):
   relation["natural"="wood"]({bb});
   way["landcover"="trees"]({bb});
 );
-out tags geom;"""
+out geom;"""
         for el in overpass(q, f"bosques {i+1}/4"):
             elements[(el["type"], el["id"])] = el
         time.sleep(10)
@@ -393,7 +398,7 @@ def finish_real(rows, cols, d_lat, d_lon, cov_pct, keep, forest_source):
     log("Descargando municipios y provincias…")
     q = f"""[out:json][timeout:300];
 relation["boundary"="administrative"]["admin_level"~"^(6|8)$"]({s},{w},{n},{e});
-out tags geom;"""
+out geom;"""
     adm = overpass(q, "límites")
     munis, provs = [], []
     for el in adm:
@@ -432,7 +437,7 @@ out tags geom;"""
   relation["leisure"="nature_reserve"]({s},{w},{n},{e});
   relation["boundary"="national_park"]({s},{w},{n},{e});
 );
-out tags geom;"""
+out geom;"""
     prot_el = overpass(q, "protegidos")
     prots = []
     for el in prot_el:
@@ -485,9 +490,19 @@ out tags geom;"""
     log(f"  celdas en espacio protegido: {sum(1 for x in prot_idx if x >= 0)}")
 
     # --- altitud
-    log("Descargando altitudes (Open-Meteo / Copernicus DEM)…")
-    alts = fetch_elevations(centers)
-    alts = [int(round(a)) if a is not None else 0 for a in alts]
+    log("Altitudes (Open-Meteo / Copernicus DEM)…")
+    known = {}
+    cache_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"altitudes_{REGION['id']}.json")
+    if os.path.exists(cache_file):
+        cj = json.load(open(cache_file, encoding="utf-8"))
+        if cj.get("rows") == rows and cj.get("cols") == cols:
+            known = {int(k): v for k, v in cj["alt"].items()}
+    missing = [j for j, ci in enumerate(keep) if int(ci) not in known]
+    log(f"  {len(keep) - len(missing)} altitudes reutilizadas, {len(missing)} por descargar")
+    fetched = fetch_elevations([centers[j] for j in missing]) if missing else []
+    for j, a in zip(missing, fetched):
+        known[int(keep[j])] = int(round(a)) if a is not None else 0
+    alts = [int(known[int(ci)]) for ci in keep]
     log(f"  altitud min {min(alts)} m, max {max(alts)} m")
 
     try:

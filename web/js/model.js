@@ -90,7 +90,7 @@
   function habitat(sp, cell) {
     const cov = (cell.pino * sp.host.pino + cell.frondosa * sp.host.frondosa +
       cell.mixto * sp.host.mixto + cell.desconocido * sp.host.desconocido) / 100;
-    const hc = Math.min(1, cov / 0.35);
+    const hc = Math.min(1, cov / 0.6);
     const [lo, hi] = sp.alt;
     const af = cell.alt >= lo && cell.alt <= hi ? 1 : cell.alt < lo ? ramp(cell.alt, lo - 250, lo) : 1 - ramp(cell.alt, hi, hi + 250);
     return { H: hc * af, cov, hc, af };

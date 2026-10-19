@@ -381,9 +381,9 @@
     }
     const prov = cell && cell.prov ? cell.prov : '';
     const who = /soria/i.test(prov)
-      ? 'Parque Micológico Montes de Soria, Pinares de Urbión o montes de la Junta (Micocyl)'
-      : /burgos/i.test(prov) ? 'acotados Micocyl de Burgos o del ayuntamiento' : 'el acotado de la zona';
-    let text = `Casi todos los montes de la comarca están acotados. Probablemente necesitas permiso de ${who}. Comprueba los carteles del monte.`;
+      ? 'del Parque Micológico Montes de Soria, de Pinares de Urbión o de los montes de la Junta (Micocyl)'
+      : /burgos/i.test(prov) ? 'de los acotados Micocyl de Burgos o del ayuntamiento' : 'del acotado de la zona';
+    let text = `Casi todos los montes de la comarca están acotados. Probablemente necesitas permiso ${who}. Comprueba los carteles del monte.`;
     if (cell && cell.prot && cell.prot.k === 'n2000') text += ` Además está en la Red Natura 2000 (${cell.prot.n}).`;
     return { cls: 'amber', title: 'Permiso probable', text };
   }
@@ -463,7 +463,7 @@
       why.push(['rain', 'Sin datos de lluvia', 'conecta a Internet y toca «Meteo» arriba para descargarlos', 0.5]);
     }
     why.push(['tree', forest ? `Bosque: ${forest}` : 'Muy poco bosque', `busca ${sp.hostLabel}`, s.h.hc]);
-    why.push(['mountain', `Altitud media ${fmtNum(cell.alt)} m`, `rango habitual ${fmtNum(sp.alt[0])}–${fmtNum(sp.alt[1])} m`, s.h.af]);
+    why.push(['mountain', `Altitud de ${fmtNum(cell.alt)} m en el centro de la cuadrícula`, `rango habitual ${fmtNum(sp.alt[0])}–${fmtNum(sp.alt[1])} m`, s.h.af]);
     why.push(['calendar', `${seasonWord(s.s)[0].toUpperCase()}${seasonWord(s.s).slice(1)}`, '', s.s]);
 
     openSheet(`
