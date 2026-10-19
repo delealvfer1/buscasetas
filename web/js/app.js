@@ -449,7 +449,7 @@
     const sp = s.sp;
     const lv = M.LEVELS[s.level];
     const legal = legalFor(cell);
-    const forest = [['pinar', cell.pino], ['frondosas', cell.frondosa], ['mixto', cell.mixto], ['sin especificar', cell.desconocido]]
+    const forest = [['coníferas', cell.pino], ['frondosas', cell.frondosa], ['mixto', cell.mixto], ['sin especificar', cell.desconocido]]
       .filter(f => f[1] > 0).map(f => `${f[0]} ${f[1]} %`).join(', ');
     const why = [];
     if (s.m) {
@@ -776,7 +776,7 @@
         rec.pred = predictionsFor(pts, target, new Date(a.start));
       } else {
         const dt = $('#o-date') ? new Date($('#o-date').value + 'T12:00:00') : new Date();
-        rec = { id: uid(), start: dt.getTime(), end: null, track: [], dist: 0, lat: opts.lat, lon: opts.lon };
+        rec = { id: uid(), start: dt.getTime(), end: null, track: [], dist: 0, lat: opts.lat, lon: opts.lon, quick: true };
         rec.pred = predictionsFor([[opts.lat, opts.lon]], target, dt);
       }
       const h = rec.lat != null ? cellAt(rec.lat, rec.lon) : {};
@@ -858,7 +858,7 @@
     const head = ['fecha', 'hora_inicio', 'minutos', 'especie_buscada', 'encontrada', 'especies_encontradas', 'kg', 'prediccion', 'nivel', 'municipio', 'lat', 'lon', 'distancia_m', 'notas', 'modelo'];
     const rows = state.outings.map(x => {
       const d = new Date(x.start);
-      return [d.toISOString().slice(0, 10), fmtTime(d), x.end ? Math.round((x.end - x.start) / 60000) : '', x.target, x.found ? 'si' : 'no',
+      return [`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, x.quick ? '' : fmtTime(d), x.end ? Math.round((x.end - x.start) / 60000) : '', x.target, x.found ? 'si' : 'no',
         (x.species || []).join(' '), x.kg || 0, x.pred ? x.pred.score : '', x.pred ? M.LEVELS[x.pred.level].name : '', x.muni || '',
         x.lat != null ? x.lat.toFixed(4) : '', x.lon != null ? x.lon.toFixed(4) : '', x.dist || 0, x.notes || '', x.model || ''].map(csvCell).join(';');
     });

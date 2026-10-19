@@ -74,7 +74,7 @@ def overpass(query, label):
         for url in OVERPASS_URLS:
             try:
                 t0 = time.time()
-                r = requests.post(url, data={"data": query}, headers=UA, timeout=420)
+                r = requests.post(url, data={"data": query}, headers=UA, timeout=300)
                 if r.status_code == 200:
                     js = r.json()
                     n = len(js.get("elements", []))
@@ -175,6 +175,58 @@ def protected_kind(tags):
     return "otro"
 
 
+# ---------------------------------------------------------------- Copernicus HRL
+
+DLT_URL = ("https://image.discomap.eea.europa.eu/arcgis/rest/services/GioLandPublic/"
+           "HRL_DominantLeafType2018/ImageServer/exportImage")
+PX = 20  # píxeles por lado de celda (~50 m)
+
+
+def fetch_dlt(rows, cols, d_lat, d_lon):
+    """Tipo de hoja dominante 2018 (Copernicus HRL, 10 m): 0 sin árboles, 1 frondosas, 2 coníferas.
+    Devuelve (pct_coniferas, pct_frondosas) por celda, arrays de rows*cols."""
+    import io
+    import numpy as np
+    import requests
+    s, w = REGION["min_lat"], REGION["min_lon"]
+    n, e = s + rows * d_lat, w + cols * d_lon
+    W, H = cols * PX, rows * PX
+    url = (f"{DLT_URL}?bbox={w},{s},{e},{n}&bboxSR=4326&imageSR=4326&size={W},{H}"
+           f"&format=tiff&pixelType=U8&noData=255&interpolation=RSP_NearestNeighbor&f=image")
+    last = None
+    for attempt in range(4):
+        try:
+            r = requests.get(url, headers=UA, timeout=240)
+            ct = r.headers.get("content-type", "")
+            if r.status_code == 200 and "json" not in ct and "text" not in ct and len(r.content) > 1000:
+                break
+            last = f"HTTP {r.status_code} {ct} {r.text[:200] if 'text' in ct or 'json' in ct else len(r.content)}"
+        except Exception as ex:  # noqa: BLE001
+            last = repr(ex)
+        log("  Copernicus intento", attempt + 1, "->", last)
+        time.sleep(10 * (attempt + 1))
+    else:
+        raise RuntimeError(f"Copernicus no respondió: {last}")
+    try:
+        from PIL import Image
+        arr = np.array(Image.open(io.BytesIO(r.content)))
+    except Exception as ex:  # noqa: BLE001
+        log("  PIL no pudo leer el TIFF:", repr(ex)[:150], "- pruebo tifffile")
+        import tifffile
+        arr = tifffile.imread(io.BytesIO(r.content))
+    arr = np.squeeze(arr)
+    log(f"  Copernicus: imagen {arr.shape} {arr.dtype}, valores {dict(zip(*[x.tolist() for x in np.unique(arr, return_counts=True)]))}")
+    if arr.shape != (H, W):
+        raise RuntimeError(f"Tamaño inesperado {arr.shape}, esperaba {(H, W)}")
+    arr = arr[::-1]  # fila 0 = sur, como la rejilla
+    blocks = arr.reshape(rows, PX, cols, PX).swapaxes(1, 2).reshape(rows * cols, PX * PX)
+    valid = (blocks <= 2).sum(axis=1)
+    con = (blocks == 2).sum(axis=1)
+    bro = (blocks == 1).sum(axis=1)
+    den = np.maximum(valid, 1)
+    return np.round(con * 100 / den).astype(int), np.round(bro * 100 / den).astype(int), valid
+
+
 # ---------------------------------------------------------------- elevación
 
 def fetch_elevations(points):
@@ -229,6 +281,37 @@ def build_real():
     d_lat, d_lon, rows, cols = make_grid()
     log(f"Rejilla {rows} filas x {cols} columnas = {rows*cols} celdas (dLat={d_lat:.6f}, dLon={d_lon:.6f})")
 
+    s, w, n, e = REGION["min_lat"], REGION["min_lon"], REGION["max_lat"], REGION["max_lon"]
+    TYPES = ["pino", "frondosa", "mixto", "desconocido"]
+    forest_source = None
+    cov_pct = None
+    if os.environ.get("FOREST_SOURCE", "copernicus") == "copernicus":
+        log("Descargando tipo de arbolado de Copernicus (HRL Dominant Leaf Type 2018)…")
+        try:
+            con, bro, valid = fetch_dlt(rows, cols, d_lat, d_lon)
+            cov_pct = np.zeros((rows * cols, 4), dtype=int)
+            cov_pct[:, 0] = con
+            cov_pct[:, 1] = bro
+            forest_source = "copernicus"
+            log(f"  celdas con datos válidos: {(valid > 0).sum()} de {rows*cols}")
+        except Exception as ex:  # noqa: BLE001
+            log("  Copernicus falló, uso OpenStreetMap:", repr(ex)[:300])
+    if cov_pct is None:
+        cov_pct = forest_from_osm(rows, cols, d_lat, d_lon)
+        forest_source = "osm"
+
+    total = cov_pct.sum(axis=1)
+    keep = np.where(total >= MIN_FOREST_PCT)[0]
+    log(f"  fuente de bosque: {forest_source}; celdas con bosque >= {MIN_FOREST_PCT}%: {len(keep)} de {rows*cols}")
+    share = cov_pct[keep].sum(axis=0) / max(1, cov_pct[keep].sum())
+    log("  reparto de superficie forestal: " + ", ".join(f"{TYPES[k]} {share[k]*100:.1f}%" for k in range(4)))
+    return finish_real(rows, cols, d_lat, d_lon, cov_pct, keep, forest_source)
+
+
+def forest_from_osm(rows, cols, d_lat, d_lon):
+    import numpy as np
+    from shapely import points as shp_points
+    from shapely.strtree import STRtree
     s, w, n, e = REGION["min_lat"], REGION["min_lon"], REGION["max_lat"], REGION["max_lon"]
 
     # --- bosques, en 4 trozos para no saturar Overpass
@@ -297,12 +380,14 @@ out tags geom;"""
     cell_of_pt = np.arange(len(pts)) // per_cell
     for k in range(4):
         cov[:, k] = np.bincount(cell_of_pt[pt_type == k], minlength=rows * cols)
-    cov_pct = np.round(cov * 100 / per_cell).astype(int)
-    total = cov_pct.sum(axis=1)
-    keep = np.where(total >= MIN_FOREST_PCT)[0]
-    log(f"  celdas con bosque >= {MIN_FOREST_PCT}%: {len(keep)} de {rows*cols}")
-    share = cov[keep].sum(axis=0) / max(1, cov[keep].sum())
-    log("  reparto de superficie forestal: " + ", ".join(f"{TYPES[k]} {share[k]*100:.1f}%" for k in range(4)))
+    return np.round(cov * 100 / per_cell).astype(int)
+
+
+def finish_real(rows, cols, d_lat, d_lon, cov_pct, keep, forest_source):
+    import numpy as np
+    from shapely import points as shp_points
+    from shapely.strtree import STRtree
+    s, w, n, e = REGION["min_lat"], REGION["min_lon"], REGION["max_lat"], REGION["max_lon"]
 
     # --- límites administrativos
     log("Descargando municipios y provincias…")
@@ -425,6 +510,7 @@ out tags geom;"""
         "provs": prov_names,
         "prots": prot_list,
         "synthetic": False,
+        "forest_source": forest_source,
     }
 
 
@@ -493,11 +579,14 @@ def main():
     finally:
         with open(os.path.join(args.out, "log.txt"), "w", encoding="utf-8") as f:
             f.write("\n".join(LOG) + "\n")
+    sources = ["© OpenStreetMap contributors (ODbL)", "Open-Meteo Elevation API (Copernicus DEM GLO-90)"]
+    if data.get("forest_source") == "copernicus":
+        sources.insert(0, "Copernicus Land Monitoring Service, HRL Dominant Leaf Type 2018 (© Unión Europea, EEA)")
     data.update({
         "version": 1,
         "generated": dt.date.today().isoformat(),
         "region": REGION,
-        "sources": ["© OpenStreetMap contributors (ODbL)", "Open-Meteo Elevation API (Copernicus DEM GLO-90)"],
+        "sources": sources,
     })
     js = "window.SETAS_DATA = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n"
     with open(os.path.join(args.out, "cells.js"), "w", encoding="utf-8") as f:
