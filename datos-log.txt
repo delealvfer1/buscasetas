@@ -1,0 +1,20 @@
+BuscaSetas · datos de hábitat · región Pinares de Soria y Burgos · 2026-10-19T16:20:18.048268Z
+Rejilla 52 filas x 70 columnas = 3640 celdas (dLat=0.008983, dLon=0.012067)
+Descargando tipo de arbolado de Copernicus (HRL Dominant Leaf Type 2018)…
+  Copernicus: imagen (1040, 1400) uint8, valores {0: 612695, 1: 349459, 2: 493846}
+  celdas con datos válidos: 3640 de 3640
+  fuente de bosque: copernicus; celdas con bosque >= 3%: 3401 de 3640
+  reparto de superficie forestal: pino 58.6%, frondosa 41.4%, mixto 0.0%, desconocido 0.0%
+Descargando municipios y provincias…
+  Overpass límites: 119 elementos desde https://overpass-api.de/api/interpreter en 37s
+  116 municipios, 3 provincias
+Descargando espacios protegidos…
+  Overpass protegidos: 13 elementos desde https://overpass-api.de/api/interpreter en 49s
+  espacios protegidos: Parque Natural del Cañón del Río Lobos [enp|Parque Natural]; Parque natural de la Sierra Cebollera [enp|Parque Natural]; Humedales de la Sierra de Urbión [enp|]; Reserva de la Biosfera Valles del Leza, Jubera, Cidacos y Alhama [otro|]; Espacio Natural de la Sierra de la Demanda [enp|]; Parque Natural Lagunas Glaciares de Neila [enp|Parque Natural]; Monumento Natural de la Fuentona [enp|]; Reserva Natural del Sabinar de Calatañazor [enp|]; Parque Natural Sabinares de Arlanza-La Yecla [enp|Parque Natural]; Parque Natural del Alto Najerilla [enp|Parque Natural]
+  celdas en espacio protegido: 1053
+Altitudes (Open-Meteo / Copernicus DEM)…
+  3401 altitudes reutilizadas, 0 por descargar
+  altitud min 905 m, max 2134 m
+  WFS https://geoserver.iepnb.es/geoserver/foto_fija_mfe/ff_uso/wfs?service=WFS&request=GetCapabilities -> HTTP 403, 134 bytes; capas: []
+  WFS https://geoserver.iepnb.es/geoserver/wfs?service=WFS&request=GetCapabilities -> HTTP 403, 134 bytes; capas: []
+Escrito cells.js (92 KB, 3401 celdas) en 90s
