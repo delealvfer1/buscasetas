@@ -1,0 +1,94 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      regenerar_datos:
+        description: "Volver a descargar los datos de hábitat (OpenStreetMap y altitud)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: compilar-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Caché de los datos de hábitat
+        id: cache-datos
+        uses: actions/cache@v4
+        with:
+          path: pipeline/out
+          key: datos-${{ hashFiles('pipeline/build_data.py') }}-${{ inputs.regenerar_datos && github.run_id || 'v1' }}
+
+      - name: Generar datos de hábitat (OSM, altitud, municipios, espacios protegidos)
+        if: steps.cache-datos.outputs.cache-hit != 'true'
+        run: |
+          pip install -r pipeline/requirements.txt
+          python pipeline/build_data.py --out pipeline/out
+
+      - name: Copiar datos a la app
+        run: |
+          cp pipeline/out/cells.js web/data/cells.js
+          cat pipeline/out/log.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Compilar APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: gradle --no-daemon --stacktrace assembleRelease
+
+      - name: Preparar entrega
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/BuscaSetas.apk
+          cp pipeline/out/log.txt dist/datos-log.txt
+          cp pipeline/out/cells.js dist/cells.js
+          echo "Build ${{ github.run_number }} · commit ${{ github.sha }} · $(date -u +%FT%TZ)" > dist/BUILD.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BuscaSetas-apk
+          path: dist/
+
+      - name: Publicar en la rama "builds"
+        run: |
+          cd dist
+          git init -q -b builds
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "APK build ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" builds
+
+      - name: Publicar como release "ultima"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ultima --yes --cleanup-tag || true
+          gh release create ultima dist/BuscaSetas.apk \
+            --target "${{ github.sha }}" \
+            --title "BuscaSetas · build ${{ github.run_number }}" \
+            --notes "Prototipo para probar en Pinares de Soria y Burgos. Descarga BuscaSetas.apk en el móvil Android e instálalo."

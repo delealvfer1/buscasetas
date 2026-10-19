@@ -1,0 +1,10 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+pipeline/out/
+pipeline/__pycache__/
+test-output/
+dist/

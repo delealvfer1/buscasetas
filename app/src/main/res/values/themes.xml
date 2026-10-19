@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_dark">#2F2418</color>
+    <color name="paper">#F4EEE2</color>
+    <color name="icon_bg">#EFE4CC</color>
+
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:statusBarColor">@color/brand_dark</item>
+        <item name="android:navigationBarColor">@color/brand_dark</item>
+        <item name="android:colorPrimary">@color/brand_dark</item>
+        <item name="android:colorAccent">#B4532A</item>
+    </style>
+</resources>

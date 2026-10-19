@@ -1,0 +1,67 @@
+plugins {
+    id 'com.android.application'
+}
+
+def webAssetsDir = layout.buildDirectory.dir('webassets')
+
+android {
+    namespace 'es.buscasetas.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'es.buscasetas.app'
+        minSdk 26
+        // 34 evita el modo "edge-to-edge" obligatorio de Android 15 en este prototipo
+        targetSdk 34
+        versionCode((System.getenv('VERSION_CODE') ?: '1') as int)
+        versionName "0.1." + (System.getenv('VERSION_CODE') ?: '0')
+    }
+
+    signingConfigs {
+        // Clave fija del prototipo: permite instalar versiones nuevas encima de la anterior
+        // sin perder los datos guardados. Para publicar en Google Play habrá que usar una clave privada.
+        prototipo {
+            storeFile file('buscasetas.jks')
+            storePassword 'buscasetas'
+            keyAlias 'buscasetas'
+            keyPassword 'buscasetas'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.prototipo
+        }
+        debug {
+            signingConfig signingConfigs.prototipo
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs += [webAssetsDir.get().asFile]
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.core:core:1.13.1'
+}
+
+// Copia la app web (carpeta /web del repositorio) dentro del APK como assets/www
+def copyWeb = tasks.register('copyWeb', Copy) {
+    from(rootProject.file('web'))
+    into(webAssetsDir.map { it.dir('www') })
+}
+preBuild.dependsOn copyWeb
