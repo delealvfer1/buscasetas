@@ -42,6 +42,12 @@ android {
         buildConfig true
     }
 
+    lint {
+        // Prototipo instalado a mano: que los avisos de Google Play no bloqueen el APK
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
