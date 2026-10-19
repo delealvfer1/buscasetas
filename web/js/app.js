@@ -329,14 +329,18 @@
       state.meteo = r.data;
       state.wx = W.interpolate(r.data, R, cells);
       const old = (Date.now() - new Date(r.data.fetched)) > 36 * 3600e3;
-      st.textContent = `Meteo: ${W.ageText(r.data.fetched)}${r.error ? ', sin red' : ''}`;
-      st.classList.toggle('warn', old || !!r.error);
+      st.textContent = `Meteo: ${W.ageText(r.data.fetched)}${r.error ? ', sin red' : ''}${r.data.note ? ' (1 punto)' : ''}`;
+      st.classList.toggle('warn', old || !!r.error || !!r.data.note);
+      if (r.error && force) toast('No se pudo actualizar: ' + r.error.message, 6000);
+      if (r.data.note && r.source === 'red') toast('Meteo de un solo punto para toda la zona: ' + (W.lastError() || ''), 6000);
     } else {
       state.wx = null;
       st.textContent = 'Sin meteo: toca para reintentar';
       st.classList.add('warn');
-      toast('Sin conexión: el mapa solo usa bosque y temporada hasta que descargue la lluvia.', 5000);
+      toast('Sin datos de lluvia (' + (r.error ? r.error.message : 'error desconocido') + '). El mapa usa solo bosque y temporada.', 7000);
     }
+    state.meteoError = r.error ? r.error.message : (W.lastError() || null);
+    renderMeteoDiag();
     renderDayChips();
     recompute();
   }
@@ -972,6 +976,13 @@
     $('#practices').innerHTML = S.practices.map(s => `<li>${esc(s)}</li>`).join('');
     $('#data-info').innerHTML = `Datos de hábitat generados el ${esc(D.generated)}${D.synthetic ? ' <strong>(DATOS DE PRUEBA, no reales)</strong>' : ''} a partir de ${esc(D.sources.join(', '))}. ${fmtNum(cells.length)} cuadrículas con bosque. Lluvia y temperatura: Open-Meteo.com (CC BY 4.0). Mapas: IGN (CC BY 4.0) y OpenStreetMap.`;
     $('#app-version').textContent = IS_APP && window.AndroidBridge.version ? 'Versión ' + window.AndroidBridge.version() : 'Versión web de prueba';
+  }
+  function renderMeteoDiag() {
+    const el = $('#meteo-diag');
+    if (!el) return;
+    const m = state.meteo;
+    el.textContent = (m ? `Meteo descargada ${W.ageText(m.fetched)}${m.note ? ' (un solo punto)' : ''}.` : 'Meteo sin descargar.') +
+      (state.meteoError ? ` Último error: ${state.meteoError}` : '');
   }
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-url]');

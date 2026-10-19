@@ -30,33 +30,86 @@
     try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* almacenamiento lleno */ }
   }
 
-  async function fetchMeteo(region) {
-    const pts = gridPoints(region);
-    const lat = pts.map(p => p.lat.toFixed(3)).join(',');
-    const lon = pts.map(p => p.lon.toFixed(3)).join(',');
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
-      '&daily=precipitation_sum,temperature_2m_max,temperature_2m_min' +
-      '&past_days=' + PAST + '&forecast_days=' + FUTURE + '&timezone=Europe%2FMadrid';
+  const API = 'https://api.open-meteo.com/v1/forecast';
+  let lastError = null;
+
+  async function fetchJson(url, ms) {
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 25000);
-    let res;
-    try { res = await fetch(url, { signal: ctrl.signal }); } finally { clearTimeout(to); }
-    if (!res.ok) throw new Error('Open-Meteo respondió ' + res.status);
-    let js = await res.json();
-    if (!Array.isArray(js)) js = [js];
-    if (js.length !== pts.length) throw new Error('Respuesta incompleta de Open-Meteo');
-    const time = js[0].daily.time;
-    const d = {
+    const to = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+      const txt = await res.text();
+      let js;
+      try { js = JSON.parse(txt); } catch (e) { throw new Error(`respuesta no válida (HTTP ${res.status}): ${txt.slice(0, 80)}`); }
+      if (!res.ok || (js && js.error)) throw new Error(`HTTP ${res.status}: ${(js && js.reason) || txt.slice(0, 120)}`);
+      return js;
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Open-Meteo no respondió a tiempo');
+      if (e instanceof TypeError) throw new Error('sin conexión con Open-Meteo (' + e.message + ')');
+      throw e;
+    } finally {
+      clearTimeout(to);
+    }
+  }
+
+  /** Pide un grupo de puntos; devuelve un array con un objeto por punto. */
+  async function fetchPoints(pts) {
+    const q = (k, f) => k + '=' + pts.map(f).join(',');
+    const url = API + '?' + q('latitude', p => p.lat.toFixed(3)) + '&' + q('longitude', p => p.lon.toFixed(3)) +
+      '&daily=precipitation_sum,temperature_2m_max,temperature_2m_min' +
+      '&past_days=' + PAST + '&forecast_days=' + FUTURE + '&timezone=auto';
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        let js = await fetchJson(url, 30000);
+        if (!Array.isArray(js)) js = [js];
+        if (js.length !== pts.length || !js[0].daily) throw new Error('respuesta incompleta');
+        return js;
+      } catch (e) {
+        lastErr = e;
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+    throw lastErr;
+  }
+
+  function pack(region, js, note) {
+    return {
       fetched: new Date().toISOString(),
       region: region.id,
-      time,
+      note: note || null,
+      time: js[0].daily.time,
       elev: js.map(p => p.elevation),
       rain: js.map(p => p.daily.precipitation_sum.map(v => v == null ? 0 : v)),
       tmax: js.map(p => p.daily.temperature_2m_max),
       tmin: js.map(p => p.daily.temperature_2m_min),
     };
-    save(d);
-    return d;
+  }
+
+  async function fetchMeteo(region) {
+    const pts = gridPoints(region);
+    // por filas de 8 puntos, de dos en dos: peticiones pequeñas que no caducan en redes lentas
+    const groups = [];
+    for (let i = 0; i < pts.length; i += NLON) groups.push(pts.slice(i, i + NLON));
+    const out = new Array(groups.length);
+    try {
+      for (let g = 0; g < groups.length; g += 2) {
+        const part = await Promise.all(groups.slice(g, g + 2).map(fetchPoints));
+        part.forEach((js, k) => { out[g + k] = js; });
+      }
+      const d = pack(region, [].concat(...out));
+      lastError = null;
+      save(d);
+      return d;
+    } catch (e) {
+      lastError = e.message;
+      // último recurso: un único punto en el centro de la zona para toda la región
+      const c = { lat: (region.min_lat + region.max_lat) / 2, lon: (region.min_lon + region.max_lon) / 2 };
+      const one = await fetchPoints([c]);
+      const d = pack(region, pts.map(() => one[0]), 'un solo punto');
+      save(d);
+      return d;
+    }
   }
 
   /** Devuelve los datos guardados y, si son viejos (> maxAgeH) intenta actualizarlos. */
@@ -130,5 +183,5 @@
     return 'hace ' + Math.round(h / 24) + ' días';
   }
 
-  global.SetaWeather = { get, interpolate, ageText, todayStr, PAST, FUTURE };
+  global.SetaWeather = { get, interpolate, ageText, todayStr, PAST, FUTURE, lastError: () => lastError };
 })(window);
