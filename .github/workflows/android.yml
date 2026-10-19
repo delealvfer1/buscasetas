@@ -14,8 +14,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: compilar-apk
-  cancel-in-progress: false
+  group: apk-v2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
